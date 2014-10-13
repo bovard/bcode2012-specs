@@ -1,0 +1,692 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+<!-- saved from url=(0065)https://s3.amazonaws.com/battlecode-releases-2012/docs/specs.html -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+<meta name="generator" content="http://txt2tags.sf.net">
+<title>Battlecode 2012 Specifications</title>
+<style type="text/css"></style><style id="style-1-cropbar-clipper">/* Copyright 2014 Evernote Corporation. All rights reserved. */
+.en-markup-crop-options {
+    top: 18px !important;
+    left: 50% !important;
+    margin-left: -100px !important;
+    width: 200px !important;
+    border: 2px rgba(255,255,255,.38) solid !important;
+    border-radius: 4px !important;
+}
+
+.en-markup-crop-options div div:first-of-type {
+    margin-left: 0px !important;
+}
+</style></head><body bgcolor="white" text="black">
+<p align="center"></p><center><h1>Battlecode 2012 Specifications</h1>
+<font size="4">
+</font></center>
+
+<p>
+For this year's competition, you will write Java (or Scala, if you prefer) programs that play the game of Battlecode. Battlecode is a realtime strategy game. However, there are a number of differences between Battlecode and other realtime strategy games you may be familiar with.
+</p>
+<p>
+First, there is no collective player that controls the team. Instead, each robot is controlled by a separate instance of a class, and robots may only share information amongst themselves using radio communication.
+</p>
+<p>
+Second, there are no collective resources in Battlecode. Instead, each robot
+can store resource called "flux".  Flux may be transferred between nearby
+robots.
+</p>
+<p>
+Third, the entire game is run by the Battlecode software; save for a couple exceptions, there is no human intervention during the course of the game.
+</p>
+<p>
+The rest of this document explains in detail the Battlecode world, and how to write your player.
+</p>
+<h1>1. Story</h1>
+<p>
+Professor Mordemort's evil plans were thwarted by Gunface about a year ago, through many strategic battles of territorial conquest. Professor Mordemort went into hiding, and was thought to have been eliminated from the universe. In his hiding, however, he vowed to never be forgotten. He began secretly setting up power grids on planets all over the universe, planning to use all of them to power his final attack on the Coders.
+</p>
+<h1>2. Robot Overview</h1>
+<p>
+Robots are the central part of the Battlecode world. They come in six varieties, each one having a distinct set of properties. These varieties are denoted by the RobotType enum. The following table describes the different robot types: 
+</p>
+<table cellpadding="4" border="1">
+<tbody><tr>
+<td><img align="middle" src="./index_files/archon1.png" border="0" alt=""></td>
+<td><b>Archon</b></td>
+<td>A special unit that produces flux and cannot be spawned.</td>
+</tr>
+<tr>
+<td><img align="middle" src="./index_files/scout1.png" border="0" alt=""></td>
+<td><b>Scout</b></td>
+<td>A fast and lightweight air unit that can heal other units.</td>
+</tr>
+<tr>
+<td><img align="middle" src="./index_files/soldier1.png" border="0" alt=""></td>
+<td><b>Soldier</b></td>
+<td>A cheap and fast ground unit that attacks other ground and air units at close range.</td>
+</tr>
+<tr>
+<td><img align="middle" src="./index_files/scorcher1.png" border="0" alt=""></td>
+<td><b>Scorcher</b></td>
+<td>A longer range unit that can damage many units at once.  If not used carefully, it can also damage allied units.</td>
+</tr>
+<tr>
+<td><img align="middle" src="./index_files/disrupter1.png" border="0" alt=""></td>
+<td><b>Disrupter</b></td>
+<td>A ground unit that can reduce the frequency of its enemies' attacks.</td>
+</tr>
+<tr>
+<td><img align="middle" src="./index_files/tower1.png" border="0" alt=""></td>
+<td><b>Tower</b></td>
+<td>A ground unit that can only be built on power nodes.  Unlike other robots, towers do not execute any code.</td>
+</tr>
+</tbody></table>
+
+<h1>3. Rounds and Timing</h1>
+<h2>3.1. Overview</h2>
+<p>
+The "round" is the basic unit of time for a Battlecode match. Each round, every robot's player gets to use the processor for a certain amount of computation (see Timing below for more details on this). 
+</p>
+<h2>3.2. Gameplay</h2>
+<p>
+During each game round, the existing robots are run sequentially, in their order of creation.  All actions (e.g., moving, attacking, message broadcasts) take effect before the remaining robots of the round are run.  This means that if Robot 1 was created before Robot 2, and Robot 1 moves during its turn, Robot 2 will see Robot 1 in its new location in the same round.  When all robots' computations have been run, the round is over.
+</p>
+<h1>4. Energon</h1>
+<h2>4.1. Overview</h2>
+<p>
+Energon is the universal life-force in the Battlecode world. Every robot has
+an amount of energon, called its energon level.  When a robot is attacked, its
+energon level decreases.  If a robot's energon is less than or equal to zero,
+it is immediately removed from the game.
+</p>
+<h2>4.2. Maximum Energon</h2>
+<p>
+Each robot has a maximum energon level.  Initially, each robot's energon is
+equal to its maximum energon level.  Robots can lose energon by being
+attacked, and scouts cause nearby robots to regenerate some energon.
+</p>
+<h1>5. Flux</h1>
+<h2>5.1. Overview</h2>
+<p>
+Robots need flux in order to perform actions. Flux can be "spent" to create
+new robots, move, or broadcast messages.  Robots are also capable of
+transferring flux to adjacent robots.
+</p>
+<p>
+With the exception of Archons, all robots need to consume flux in order to
+execute code.  Each round, the robot's flux decreases by an amount specified by
+<code>GameConstants.UNIT_UPKEEP</code>.  If the robot does not have enough flux to pay this
+cost, it will not run any bytecodes for that round.
+If the robot does not use all of its alotted
+bytecodes, then some flux will be refunded for each unused bytecode.  The
+maximum fraction of upkeep that can be refunded is given by
+<code>GameConstants.YIELD_BONUS</code>.
+</p>
+<h2>5.2. Obtaining Flux</h2>
+<p>
+Special units called Archons can produce flux.  If archons are too close
+together, then their flux production decreases.
+If <code>d</code> is the square of the distance to the nearest allied archon, then the amount
+of flux produced is
+<code>GameConstants.MIN_PRODUCTION+(GameConstants.MAX_PRODUCTION-GameConstants.MIN_PRODUCTION)*Math.min(1.,Math.sqrt((double)d/GameConstants.PRODUCTION_PENALTY_R2))</code>.
+</p>
+<h2>5.3. Upkeep</h2>
+<p>
+Since all units except Archons and Towers consume flux, Archons can only support a certain number of robots each.  This imposes a natural unit limit instead of a hardcoded fixed number.  The choice of units and their differing decay rates determines how many robots a team may support.
+</p>
+<h1>6. The Objective</h1>
+<p>
+The objective of this year's game is to destroy the opponent's power core.
+</p>
+<h2>6.1. Overview</h2>
+<p>
+The game ends when a power core is destroyed.  In order to ensure that the
+game will end eventually, after a set amount of time, power nodes will
+start to take damage at the end of each round.  Each team's power nodes will
+receive <code>GameConstants.TIME_LIMIT_DAMAGE</code> damage, divided evenly among all
+nodes connected to the power core.  Furthermore, power nodes will no longer be
+able to regenerate.
+</p>
+<p>
+If both power cores are simultaneously destroyed by end-of-round damage, the
+winner will be determined by the following criteria, in order:
+</p>
+<ul>
+<li>The team with the greater number of power nodes.
+</li><li>The team with the greater number of Archons.
+</li><li>The team with the greater amount of total energon.
+</li><li>The team with the lower team number.
+</li></ul>
+
+<h2>6.2. Power Nodes</h2>
+<p>
+There are power nodes scattered across the map.  A team may capture a power
+node by building a tower on top of it.  A tower may only be built on top of
+a power node if the team controls an adjacent power node that is connected to
+its power core.
+Furthermore, a team may not damage an opponent's tower unless it controls an
+adjacent power node that is connected to its power core.
+</p>
+<p>
+Each team starts out with a single tower.  The node on which that tower sits
+is called the team's power core.  If a team's initial tower is destroyed, it
+loses the game.
+</p>
+<h1>7. The Map</h1>
+<h2>7.1. Overview</h2>
+<p>
+Battlecode maps consist of a grid of squares, each with a pair of integer
+coordinates. Locations on the map are represented as instances of
+<code>MapLocation</code>
+objects. Each square has a type of terrain: <code>LAND</code> or <code>VOID</code>. Land squares are traversable by all units; void squares are traversable only by airborne units.
+</p>
+<h2>7.2. Layout</h2>
+<p>
+Map coordinates are represented similarly to the pixels on a computer screen: x-coordinates increase moving to the right (East), and y-coordinates increase moving down (South). However, as an extra challenge, the top-left corner of the map is not necessarily (0, 0). The coordinates are randomly shifted, so the top-left corner might be (10573, 49972), to pick two random numbers. Thus, map boundaries cannot be inferred using absolute coordinates. 
+</p>
+<h2>7.3. Map Files</h2>
+<p>
+Maps are specified by XML files, and can be found in the maps folder of the release archive. The schema for the files should be fairly intuitive, so if you'd like to add your own maps you can use the provided maps as a basis. 
+</p>
+<h2>7.4. Constraints</h2>
+<p>
+You are welcome to create any map files you'd like, in order to test your players.  However, the maps used for the tournaments will abide by the following constraints. If a constraint is not listed here, do not assume that the tournament maps will abide by it. 
+</p>
+<ul>
+<li>The map will be rectangular, no smaller than 30 squares by 30 squares, and no larger than 60 squares by 60 squares. 
+</li><li>There will exist a ground-traversable path between any two land squares. 
+</li><li>Each team will start with 6 archons and one tower.  All of the archons will
+  be adjacent to the tower.
+</li><li>The map and starting locations will be symmetric, by either a reflection or
+  180 degree rotation.
+</li><li>All maps will specify a round limit between 2000 and 10000 rounds, inclusive. 
+</li><li>All maps will have between 6 and 50 power nodes, inclusive.
+</li></ul>
+
+<h1>8. Games and Matches</h1>
+<p>
+Matches are all best of 3 games. In each game both players start
+with 6 Archons. The game ends when a team's power core is destroyed.
+Then another game is played until one team collects 2 game victories.
+No information is transferred between games except through team memory as explained below.
+</p>
+<h1>9. Robot Abilities</h1>
+<p>
+This section describes how robots can interact with the Battlecode world.  Your player controls robots with the RobotController class.  Unless otherwise noted, all methods referenced in this section are methods of RobotController. On its turn a robot may perform these abilities:
+</p>
+<ul>
+<li>Sense its environment and transfer flux any number of times.
+</li><li>Perform one movement action (move, change direction, or spawn), if movement cooldown allows.
+</li><li>Attack, if attack cooldown allows.
+</li><li>Broadcast a message.
+</li></ul>
+
+<h2>9.1. Actions</h2>
+<p>
+A robot may perform one movement action per turn and one attack action per
+turn. Furthermore, each robot has a movement and attack cooldown. When getRoundsUntilAttackIdle() is 0, the robot may issue attack commands. When getRoundsUntilMovementIdle is 0, the robot may issue movement commands.
+</p>
+<p>
+Movement actions are performed at the end of a robot's turn. Calling the
+associated method like <code>moveForward()</code> or <code>spawn()</code> simply queues that action to be performed at the end of its turn. A robot may continue executing and when ready call yield() to end its turn and perform the action. Or if the robot runs out of bytecodes the action will automatically be performed. This allows actions to be executed at the end of a robot's turn without explicit bytecode counting.
+Attack actions are performed immediately.  If you sense a robot before and
+after an attack, you will see that its energon has decreased.
+</p>
+<p>
+In general, the effect of an action takes place immediately, even though the
+action may have a duration of some number of rounds.  For instance, when a
+robot moves, it appears at its new location as soon as its turn ends, and its roundsUntilMovementIdle is set to the appropriate movement delay. The robot would need to wait for the movement cooldown before being able to move again.
+</p>
+<p>
+The following are the possible actions that a robot can execute.
+</p>
+<h3>9.1.1. Attacking Actions</h3>
+<p>
+All attack actions require <code>roundsUntilAttackIdle()</code> to be 0.
+</p>
+<p>
+<b>Attacking</b> - <code>attackSquare(MapLocation,RobotLevel)</code>
+makes a robot attack a specified location.  The location must be within the robot's attack range, as defined by its RobotType.  If there is a robot at the specified location, that robot will have its energon level decreased by the strength of the attack, as defined by <code>RobotType.attackPower</code>. Attacks damage the target robot immediately. Then <code>roundsUntilAttackIdle</code> is set to <code>RobotType.attackDelay</code>.
+</p>
+<p>
+Scouts, Disrupters, and Scorchers have special attack abilities.  A scout's
+attack drains its target's flux rather than reducing its target's energon.
+A disrupter's attack increases its target's attack timeout by
+<code>GameConstants.DISRUPTER_DELAY</code> in addition to causing damage.
+A scorcher's attack hits all ground units
+in its attack range.
+</p>
+<h3>9.1.2. Movement Actions</h3>
+<p>
+All movement actions require <code>roundsUntilMovementIdle()</code> to be 0.
+</p>
+<p>
+<b>Direction</b> - Each robot has a direction, as enumerated by Direction.  Calling <code>setDirection(Direction)</code> changes the robot's direction.  This action has a duration of 1 round.
+</p>
+<p>
+<b>Movement</b> - <code>moveForward()</code> and <code>moveBackward()</code> make a robot move one
+square forward or backward relative to its current Direction.  Moving backward
+does not change a robot's direction.  A ground robot may move into any square
+whose TerrainTile permits ground objects and which is not already occupied by
+another ground object. Air robots can move into any square that is within the
+bounds of the map and is not occupied by another air robot.  Then
+<code>roundsUntilMovementIdle</code> is set to <code>RobotType.moveDelayOrthogonal()</code> or
+<code>RobotType.moveDelayDiagonal()</code>.  Note that moving diagonally takes
+approximately <code>sqrt(2)</code> times longer than moving orthogonally.
+</p>
+<p>
+<b>Spawning</b> - Archons may spawn any other unit using <code>spawn(RobotType)</code>. The new robot appears directly in front of and adjacent to the parent robot.  Thus, robots can only spawn when the square in front of them is empty and of a terrain type traversible by the child. Child robots initially face in a random direction. They are always on the same team as their parents.
+</p>
+<p>
+The amount of flux required to spawn each robot is given by its
+<code>RobotType.spawnCost</code>. Once a robot executes a spawn, the child robot
+appears immediately on the map in front of the parent.  It will have
+<code>RobotType.maxEnergon</code> energon and zero flux. Both <code>roundsUntilAttackIdle</code> and <code>roundsUntilMovementIdle</code> of the child robot are set to <code>RobotType.wakeDelay</code>.
+</p>
+<h2>9.2. Sensors</h2>
+<p>
+Robots use their sensors to inspect the world around them. Sensor abilities
+are passive, and usually of the form get____ or sense____. These
+methods usually require that the target GameObject or map square fall within
+the calling robot's sensor range. One notable exception to this is the
+<code>senseTerrainTile</code>. Robots automatically remember all terrain they've seen,
+so <code>senseTerrainTile</code> returns the terrain type of a square if it has ever been in the robot's sensor range, even if it is not ''currently'' within sensor range.
+</p>
+<h2>9.3. Radio Communication</h2>
+<p>
+Robots may broadcast 1 message per turn. This is the only way to communicate
+with other robots. A message is an instance of class Message, and contains an
+array of integers, an array of Strings, and an array of MapLocations. When a
+robot calls <code>broadcast(Message)</code>, a copy of the message is instantly added
+to the incoming message queue of each robot within the sender's communication
+range (not including the sender itself).  Communication ranges are always
+circular.  The receiving robots may use the passive abilities
+<code>getNextMessage()</code> or <code>getAllMessages()</code> to retrieve messages from their incoming message queue.
+</p>
+<p>
+Any field of a Message instance may be null, and any element of an array may be null. Messages are essentially "cloned" when broadcast or received, so a single Message instance may be received, mutated, transmitted, mutated, and transmitted again. 
+</p>
+<p>
+There is no limit to the size of messages, but sending a message requires an
+amount of flux that depends on the size of the message in bytes. Each
+integer element takes 4 bytes; each MapLocation takes 8 bytes, whether null or
+not; and each String element takes up a number of bytes equal to the length,
+with a minimum of 4 whether null or not. A null field of a Message (i.e. no
+array at all) takes 0 bytes. Sending a message requires
+<code>GameConstants.BROADCAST_FIXED_COST</code> in flux, plus
+<code>GameConstants.BROADCAST_COST_PER_BYTE</code> flux per byte. See Appendix C. 
+</p>
+<h2>9.4. Transferring Flux</h2>
+<p>
+Robots can transfer flux between themselves using
+<code>transferFlux(MapLocation,RobotLevel)</code>, which removes a specified amount of flux from the calling robot and adds it to the receiving robot. The receiving robot must be adjacent to or on same square as the transferring robot.
+</p>
+<h2>9.5. Suicide</h2>
+<p>
+Calling <code>suicide()</code> immediately kills the calling robot and removes it from the
+game.
+</p>
+<h2>9.6. Team Memory</h2>
+<p>
+Each team can save a small amount of information for the next game using the
+function <code>setTeamMemory()</code>.  This information may be retrieved using
+<code>getTeamMemory()</code>.  If there was no previous game in the match, or no
+information was saved, the memory will be filled with zeros..
+</p>
+<h2>9.7. Control Bits, Indicator Strings, and Breakpoints</h2>
+<p>
+There are several ways that the user can interact with robots.  First, any
+robot can use <code>setIndicatorString(int,String)</code> to set a string that is
+visible to the user when mousing over the robot.  Second, the user can
+manually set a long for each robot, which the robot can query using
+<code>getControlBits()</code>.  Finally, a robot can call <code>breakpoint()</code>, which flags the game engine to pause computation at the end of the round.  These methods are for debug purposes only.  During tournaments and scrimmages, the user will not be able to interact with the robots.  For more information on these debugging interfaces, check out Debugging below.
+</p>
+<h2>9.8. Ending turn</h2>
+<p>
+Only <code>yield()</code> and <code>suicide()</code> end the turn of a robot.  Otherwise a turn
+ends naturally when the bytecode limit is hit.  Other actions may be performed
+as many times as attack/movement/broadcast timeouts allow.
+</p>
+<h1>10. Writing a Player</h1>
+<h2>10.1. Introduction</h2>
+<p>
+Your player program must reside in a Java package named <code>teamXXX</code>, where XXX
+is your three-digit team number, with leading zeros included. You may have
+whatever subpackages you like. You must define <code>teamXXX.RobotPlayer</code>, which
+must have a public static <code>run</code> method that takes one argument of type
+<code>battlecode.common.RobotController</code>. Whenever a new
+robot is created, the game calls the <code>run</code> method with the robots
+<code>RobotController</code> as its argument.
+If this method ever finishes, either because it returned or because of an
+uncaught exception, the robot dies and is removed from the game. You are encouraged to wrap your code in loops and exception handlers so that this does not happen.
+</p>
+<h2>10.2. RobotController</h2>
+<p>
+The <code>RobotController</code> argument to the <code>RobotPlayer</code> constructor is very
+important -- this is how you will control your robot.  <code>RobotController</code> has
+methods for sensing (e.g. <code>senseRobotInfo(Robot)</code>) and performing actions
+(e.g., <code>moveForward()</code>).  If you're not sure how to get your robot to do
+something, the Javadocs for <code>RobotController</code> are a good place to start.
+</p>
+<h2>10.3. Example: examplefuncsplayer</h2>
+<p>
+Let's start with an example.  Here is a simple implementation of RobotPlayer, that runs straight until it hits something, then turns right, then runs straight, etc.: 
+</p>
+<pre>  package examplefuncsplayer;
+  
+  import battlecode.common.*;
+  
+  public class RobotPlayer {
+  
+      public static void run(RobotController myRC) {
+          while (true) {
+              try {
+                  while (myRC.isMovementActive()) {
+                      myRC.yield();
+                  }
+  
+                  if (myRC.canMove(myRC.getDirection())) {
+                      myRC.moveForward();
+                  } else {
+                      myRC.setDirection(myRC.getDirection().rotateRight());
+                  }
+                  myRC.yield();
+              } catch (Exception e) {
+                  System.out.println("caught exception:");
+                  e.printStackTrace();
+              }
+          }
+      }
+  }
+</pre>
+<p></p>
+<p>
+Notice the <code>while(true)</code> loop, which prevents the run method from returning.
+While the robot is alive, it will be continually cycling through this loop.
+The try/catch block inside the loop prevents the robot from throwing an
+uncaught exception and dying. Also notice the <code>while(myRC.isMovementActive()) {myRC.yield();}</code> loop. This loop waits until the robot is movement idle.  Once the robot knows it is idle, it checks whether it can move forward in its current direction -- if so, it tries to move forward. Otherwise it tries to turn right.
+</p>
+<p>
+The above team000 is included in the software release. Try compiling and running it to make sure the software works on your system.
+</p>
+<h1>11. Timing</h1>
+<h2>11.1. Introduction</h2>
+<p>
+Each robot is allowed a certain amount of computation each round.  Computation
+is measured in terms of Java bytecodes, the atomic instructions of compiled
+Java code.  Individual bytecodes are simple instructions such as "subtract" or
+"get field", and a single line of code generally contains several bytecodes.
+(For details see <a href="http://en.wikipedia.org/wiki/Java_bytecode">http://en.wikipedia.org/wiki/Java_bytecode</a>.)  Each round,
+every player runs a number of bytecodes determined by
+<code>GameConstants.BYTECODE_LIMIT</code>.  When a robot hits the bytecode limit, its computation is paused while other robots get to do their computation for the same round or the next round.  On the next round, the robot's computation is resumed exactly where it left off.  Thus, to the robot's code, the round change is invisible.  Nothing will jump out and shout at you when a round ends.
+</p>
+<p>
+Because the round can change at the end of any bytecode, unexpected things can happen.  For instance, consider the following example:
+</p>
+<pre>  Robot[] nearbyRobots = myRC.senseNearbyGameObjects(Robot.class);
+  MapLocation loc = myRC.senseRobotInfo(nearbyRobots[0]);
+</pre>
+<p>
+In the first line, the robot gets a list of all other robots in its sensor range.  In the second line, the robot senses the RobotInfo of the first robot in the list.  However, what happens if the round changes between the first and second line?  A robot that was in sensor range when line 1 was executed might be out of sensor range when line 2 is executed, resulting in an exception.  Because of this, your code should be written defensively.  Think of this as a "real-world" robot, where things can fail at any time, and you have to be prepared to handle it.
+</p>
+<p>
+However, there are ways of dealing with this, as we'll see in the next section.
+</p>
+<h2>11.2. Yielding</h2>
+<p>
+One way to deal with timing complexities is to use <code>yield()</code> judiciously.
+Calling <code>RobotController.yield()</code> ends the robot's computation for the current round.  This has two advantages.
+</p>
+<p>
+First, robots receive a significant flux bonus for yielding computation.  The
+bonus is given by <code>GameConstants.YIELD_BONUS * GameConstants.UNIT_UPKEEP * (fraction of unused bytecodes in the round)</code>.
+</p>
+<p>
+Second, after a call to <code>RobotController.yield()</code>, subsequent code is executed at the beginning of a new round. Then, you have the full amount of bytecodes for your robot to do computations before the round changes.  For instance, let's modify the example above to be:
+</p>
+<pre>  myRC.yield();
+  Robot[] nearbyRobots = myRC.senseNearbyGameObjects(Robot.class);
+  MapLocation loc = myRC.senseRobotInfo(nearbyRobots[0]);
+</pre>
+<p>
+Since yield is called in line 1, line 2 will be executed at the beginning of a
+new round.  Since <code>senseNearbyGameObjects()</code> does not take very many bytecodes, it is pretty much guaranteed that there won't be a round change between lines 2 and 3.
+</p>
+<p>
+A common paradigm is to have a main loop, with a <code>yield()</code> at the bottom of the loop.  Thus, the top of the loop is always executed at the beginning of the round.  If all the robot's computation for one iteration of the loop can fit in one round, then there should be minimal problems with unexpected round changes.  Note that team000 above does this.
+</p>
+<h2>11.3. Monitoring</h2>
+<p>
+The Clock class provides a way to identify the current round (
+<code>Clock.getRoundNum()</code> ), and how many bytecodes have been executed during
+the current round ( <code>Clock.getBytecodeNum()</code> ).
+</p>
+<h2>11.4. GameActionExceptions</h2>
+<p>
+GameActionExceptions are thrown when an ability cannot be performed.
+It is often the result of uncertainty about the gameworld, or an unexpected round change in your code.  Thus, you must write your player defensively and handle
+GameActionExceptions judiciously.  Each GameActionException has a
+GameActionExceptionType, which tells roughly what went wrong.  You should also be prepared for any ability to fail and make sure that this has as little effect as possible on the control flow of your program.
+</p>
+<p>
+Exceptions cause a bytecode penalty of <code>GameConstants.EXCEPTION_BYTECODE_PENALTY</code>.
+</p>
+<h1>12. Mechanics</h1>
+<p>
+This section deals with some of the mechanics of how your players are run in the game engine, including bytecode-counting, library restrictions, etc.
+</p>
+<h2>12.1. Java Language Usage</h2>
+<p>
+Players may use classes from any of the packages listed in
+<code>AllowedPackages.txt</code>, except for classes listed
+in <code>DisallowedPackages.txt</code>.
+</p>
+<p>
+Furthermore, the following restrictions apply:
+</p>
+<ul>
+<li><code>Object.wait</code>, <code>Object.notify</code>, <code>Object.notifyAll</code>, <code>Class.forName</code>, and <code>String.intern</code> are not allowed. 
+</li><li><code>java.lang.System</code> only supports <code>out</code>, <code>arraycopy</code>, and
+  <code>getProperty</code>.  Furthermore, <code>getProperty</code> can only be used to get
+  properties with names beginning with "bc.testing."
+</li><li><code>java.io.PrintStream</code> may not be used to open files.
+</li><li>Scala functions such as <code>scala.Console.readByte()</code> that attempt to read from
+  standard input will always throw an <code>EOFException</code>.
+</li></ul>
+
+<p>
+Note that violating any of the above restrictions will cause the robots to self-destruct when run, even if the source files compile without problems.
+</p>
+<h2>12.2. Bytecode costs</h2>
+<p>
+Classes in <code>java.util</code>, <code>java.math</code>, and <code>scala</code> and their subpackages
+are bytecode counted as if they were your own code.  
+The following functions in <code>java.lang</code> are also bytecode counted as if they were your own
+code.
+</p>
+<pre>  Math.random
+  StrictMath.random
+  String.matches
+  String.replaceAll
+  String.replaceFirst
+  String.split
+</pre>
+<p>
+The function <code>System.arraycopy</code> costs one bytecode for each
+element copied.  All other functions have a fixed bytecode cost.  These costs
+are listed in the <code>MethodCosts.txt</code> file.  Functions not listed in
+<code>MethodCosts.txt</code> are free.  The bytecode costs of <code>battlecode.common</code>
+functions are also listed in the javadoc.
+</p>
+<h2>12.3. Memory Usage</h2>
+<p>
+Robots must keep their memory usage reasonable. If a robot uses more than 8 Mb of heap space during a tournament or scrimmage match, the robot may be killed. 
+</p>
+<h2>12.4. Exceptions</h2>
+<p>
+Throwing exceptions of any kind incurs a bytecode penalty given by
+<code>GameConstants.EXCEPTION_BYTECODE_PENALTY</code>, so unnecessary throwing of exceptions should be avoided. 
+</p>
+<h2>12.5. Virtual Machine Errors</h2>
+<p>
+Your player cannot catch virtual machine errors such as <code>StackOverflowError</code> and
+<code>OutOfMemoryError</code>.  If your robot throws one of these exceptions, it will
+die.
+</p>
+<h2>12.6. Java version</h2>
+<p>
+Our scrimmage and tournament servers will be running Java 6 and Scala 2.9.
+The Battlecode software should run on Java 7, but please be aware that our
+compile server will not recognize Java 7 specific language features.
+</p>
+<h1>13. Debugging</h1>
+<p>
+This section describes some of the features of the game engine intended to make debugging somewhat less painful.  Debug mode reveals  valuable information about robots at development time but will be turned off for scrimmages and real tournaments.
+</p>
+<h2>13.1. System.out</h2>
+<p>
+Any output that your robots print to <code>System.out</code> is directed to the output stream of the Battlecode engine, prefixed with information about the robot.
+</p>
+<h2>13.2. Debug Methods</h2>
+<p>
+The game engine has a feature that allows you to separate out debugging code
+that is unimportant to your player's performance in the tournament. Methods
+that have names beginning with <code>debug_</code> and that have a <code>void</code> return type
+are given special status. By default, these methods are skipped during
+execution of the player. When the System property <code>debugMethodsEnabled</code> is
+set to <code>true</code>, however, the methods are executed normally except that they do not count against your robot's bytecode limit.  Code that prepares the arguments to such a method may consume bytecodes, but the body of the method and any methods that it invokes are not counted.
+</p>
+<h2>13.3. System Properties</h2>
+<p>
+Your robot can read system properties whose names begin with "bc.testing.".
+You can set a property by adding a line to <code>bc.conf</code> like this:
+</p>
+<pre>  bc.testing.team-a-strategy=experimental
+</pre>
+<p>
+You can check the value of the property like this:
+</p>
+<pre>  String strategy = System.getProperty("bc.testing.team-a-strategy");
+</pre>
+<p></p>
+<h2>13.4. Breakpoints</h2>
+<p>
+Breakpoints allow you to pause the game engine's calculations. If breakpoints
+are enabled (see the software page), and a robot calls
+<code>RobotController.breakpoint()</code>, the game engine will stop computing at the end of the round. This gives you a chance to see exactly what's going on in the game when your robot hits a certain point in its code. You can resume the game engine's computation in the client, by hitting the "resume" button. If the match is being dumped straight to a file (i.e., there is no client to resume the game), breakpoints are ignored.
+</p>
+<p>
+Note that when a robot calls <code>breakpoint()</code>, computation will be stopped at
+the end of the round, not immediately when <code>breakpoint()</code> is called.
+Depending on the circumstances, you might want to use <code>breakpoint(); yield();</code> instead.
+</p>
+<h1>14. Tournaments &amp; Course Credit</h1>
+<p>
+There are five tournaments: the Sprint, Seeding, Qualifying, Final, and Newbie tournaments.  Check the Calendar page for dates and locations.  Here, we'll explain the mechanics of how the tournaments are run.
+</p>
+<p>
+The Sprint Tournament is a single elimination tournament.  Contestants are
+seeded based on scrimmage ranking, and play continues until there is only one
+undefeated team.
+</p>
+<p>
+The Seeding Tournament is a single elimination tournament.  Contestants are
+seeded based on scrimmage ranking, and play continues until there is only one
+undefeated team.  The results of this tournament are used to determine seeds
+for the Qualifying and Newbie tournaments.  Teams are ranked by the following criteria, in order:
+</p>
+<ul>
+<li>Furthest round achieved
+</li><li>Bayesian Elo rating for the tournament (computed on a per-game basis, not a per-match basis)
+</li></ul>
+
+<p>
+The Qualifying Tournament is a double elimination tournament (see e.g.
+<a href="http://en.wikipedia.org/wiki/Image:NSB-doubleelim-draw-2004.png">http://en.wikipedia.org/wiki/Image:NSB-doubleelim-draw-2004.png</a>).  Play
+continues until there are 8 teams remaining.  These teams move on to the Final
+Tournament.  Teams are seeded for the final tournament as follows:
+</p>
+<ul>
+<li>The four teams that did not lose a match receive the top four seeds.
+</li><li>Teams that did not lose a single game are ranked by their qualifying seeds.
+</li><li>The remaining teams are ranked by Bayesian Elo rating for the tournament (computed on a per-game basis).
+</li></ul>
+
+<p>
+The Final Tournament is another double elimination tournament.  The Final
+Tournament starts with a blank state, i.e., any losses in the Qualifying
+Tournament are erased.
+</p>
+<p>
+The Newbie Tournament will run concurrently with the Qualifying Tournament.
+All teams consisting entirely of MIT students who have not participated in
+Battlecode before will automatically be entered into the Newbie tournament in
+addition to the other tournaments.  We will announce the format of the Newbie
+tournament soon.
+</p>
+<p>
+In order to receive credit for the course, or to be eligible for the newbie
+tournament, you must register with an <code>mit.edu</code> e-mail address.
+If you already registered with a different e-mail address, please let us know.
+</p>
+<p>
+You can receive credit for the course by defeating the reference player.  You
+must defeat Teh Devs in an unranked scrimmage on a certain set of maps.  These
+maps will be announced approximately two weeks into the course.
+If your player beats the reference player, everyone on your team receives 6 credits.
+</p>
+<p>
+If your submission does not beat the reference player, then you can get credit
+an alternate way, by sending us a 2-page report on your player: its code
+design, how it works, an explanation of any AI paradigms you used, etc. We
+will look over your source code and your report, and if both show a
+significant amount of effort, thought, and good design techniques, we will
+give you 6 credits.
+</p>
+<p>
+We give prizes for the best strategy reports, so we encourage you to submit a report even if you defeat the reference player.
+</p>
+<p>
+Also, note that you are allowed to drop 6.370 without penalty <b>very</b> late into IAP.
+</p>
+<h1>15. Getting Help</h1>
+<p>
+We have both a <a href="http://www.battlecode.org/contestants/forum/">forum</a> and an IRC
+Channel (<code>#battlecode</code> on <code>irc.freenode.net</code>).
+</p>
+<h1>16. Disclaimers</h1>
+<ol>
+<li>We have done our best to test and balance the properties of the Battlecode world. Inevitably, however, we will need to make adjustments in the interest of having a fair competition that allows a variety of creative strategies. We will endeavor to keep these changes to a minimum, and release them as early as possible. All changes will be carefully documented in the ChangeLog. 
+</li><li>Despite our best efforts, there may be bugs or exploits that allow players to operate outside the spirit of the competition.  Using such exploits for the tournament or scrimmage will result in immediate disqualification, at the discretion of the directors.  Such exploits might include, but are not limited to, robot communication without messages, bypassing the bytecode limit, or terminating the game engine.  If you are not sure what qualifies as "in the spirit of the competition", ask the devs before submitting your code.
+</li></ol>
+
+<h1>Appendices</h1>
+<h2>Appendix A: Javadocs and Game Constants</h2>
+<p>
+Javadocs can be found <a href="http://s3.amazonaws.com/battlecode-releases-2012/javadoc/index.html">here</a>, and they are also included in the software distribution.
+</p>
+<p>
+The javadocs include the values of the <a href="http://s3.amazonaws.com/battlecode-releases-2012/javadoc/constant-values.html">game constants</a> and <a href="http://s3.amazonaws.com/battlecode-releases-2012/javadoc/battlecode/common/RobotType.html#enum_constant_detail">robot attributes</a>. 
+</p>
+<p>
+We also have a handy <a href="http://s3.amazonaws.com/battlecode-releases-2012/lectures/visualRules.pdf">unit reference chart</a>.
+</p>
+<h2>Appendix B: Energon Health Warning</h2>
+<p>
+Energon intake is not for everyone.  Please consult a physician before use.  6.370 Battlecode Corporation is not responsible in the event of injury due to energon use.  Energon's side-effects include loss of limb, death, unbearable pain, tendencies to procrastinate and an unnatural senseless rage.  Handle with care. Energon consumption has not been approved by any health agency and you USE IT AT YOUR OWN RISK.  For this reason, please be careful when scrimmaging.
+</p>
+<h2>Appendix C: Specification Changelog</h2>
+<p>
+January 9
+</p>
+<ul>
+<li>Clarified that broadcasting costs flux, not energon.
+</li><li>Added link to unit reference chart.
+</li><li>Clarified that robots don't execute bytecodes if they can't pay the upkeep
+  cost.
+</li><li>Clarified that it is only possible to build a tower if the team controls an
+  adjacent node that is connected to the power core.
+</li></ul>
+
+
+<!-- html code generated by txt2tags 2.4 (http://txt2tags.sf.net) -->
+<!-- cmdline: txt2tags -t html doc/specs.txt -->
+
+</body></html>
